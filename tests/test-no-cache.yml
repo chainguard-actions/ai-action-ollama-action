@@ -1,0 +1,57 @@
+name: Test with cache disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock ollama binary
+        run: |
+          # Create a mock ollama binary that responds to all commands
+          sudo tee /usr/local/bin/ollama > /dev/null << 'SCRIPT'
+          #!/bin/bash
+          case "$1" in
+            run)
+              echo "Sure"
+              ;;
+            pull)
+              echo "pulled model"
+              ;;
+            serve)
+              sleep 86400 &
+              exit 0
+              ;;
+            --version|version)
+              echo "ollama version 0.6.5"
+              ;;
+            list|ps)
+              echo ""
+              ;;
+            *)
+              echo "ollama mock: $*"
+              ;;
+          esac
+          SCRIPT
+          sudo chmod +x /usr/local/bin/ollama
+          echo "Mock ollama installed: $(which ollama)"
+          ollama run tinyllama "test"
+
+      - id: action
+        uses: .
+        with:
+          model: tinyllama
+          prompt: "Reply with one word"
+          cache: "false"
+
+      - name: Assert response is non-empty
+        env:
+          ACTUAL: ${{ steps.action.outputs.response }}
+        run: |
+          echo "actual: $ACTUAL"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected a non-empty response when cache is disabled"
+            exit 1
+          fi
+          echo "PASS"
