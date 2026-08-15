@@ -7,45 +7,122 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install mock ollama binary
+      - name: Set up mock ollama and intercept installer
         run: |
-          # Create a mock ollama binary that responds to all commands
-          sudo tee /usr/local/bin/ollama > /dev/null << 'SCRIPT'
-          #!/bin/bash
+          # Write the fake ollama binary to a temp location
+          sudo tee /tmp/fake-ollama > /dev/null << 'OLLAMA_MOCK'
+          #!/bin/sh
           case "$1" in
             run)
-              echo "Sure"
-              ;;
-            pull)
-              echo "pulled model"
+              echo "Hello! I am a language model assistant."
               ;;
             serve)
-              sleep 86400 &
               exit 0
               ;;
-            --version|version)
-              echo "ollama version 0.6.5"
+            pull)
+              echo "pulling manifest"
+              echo "success"
               ;;
-            list|ps)
-              echo ""
+            list|ls)
+              printf "NAME\t\tID\t\tSIZE\tMODIFIED\n"
+              printf "smollm:135m\tabc123\t\t270 MB\t1 second ago\n"
+              ;;
+            version)
+              echo "ollama version is 0.6.5"
               ;;
             *)
               echo "ollama mock: $*"
               ;;
           esac
-          SCRIPT
+          OLLAMA_MOCK
+          sudo chmod +x /tmp/fake-ollama
+
+          # Write a fake install script that installs our mock ollama
+          sudo tee /tmp/fake-ollama-install.sh > /dev/null << 'INSTALL_MOCK'
+          #!/bin/sh
+          echo "Installing mock ollama..."
+          sudo cp /tmp/fake-ollama /usr/local/bin/ollama
           sudo chmod +x /usr/local/bin/ollama
-          echo "Mock ollama installed: $(which ollama)"
-          ollama run tinyllama "test"
+          echo "Mock ollama installed successfully"
+          INSTALL_MOCK
+          sudo chmod +x /tmp/fake-ollama-install.sh
+
+          # Install mock ollama now
+          sudo cp /tmp/fake-ollama /usr/local/bin/ollama
+          sudo chmod +x /usr/local/bin/ollama
+
+          # Create a mock curl that intercepts ollama.com downloads
+          mkdir -p "$HOME/.local/bin"
+          cat > "$HOME/.local/bin/curl" << 'CURL_MOCK'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -o|--output) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          case "$*" in
+            *ollama*)
+              if [ -n "$out" ]; then
+                cp /tmp/fake-ollama-install.sh "$out"
+              else
+                cat /tmp/fake-ollama-install.sh
+              fi
+              exit 0
+              ;;
+            *)
+              exec /usr/bin/curl "$@"
+              ;;
+          esac
+          CURL_MOCK
+          chmod +x "$HOME/.local/bin/curl"
+
+          # Also mock wget
+          cat > "$HOME/.local/bin/wget" << 'WGET_MOCK'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          case "$*" in
+            *ollama*)
+              if [ -n "$out" ]; then
+                cp /tmp/fake-ollama-install.sh "$out"
+              else
+                cat /tmp/fake-ollama-install.sh
+              fi
+              exit 0
+              ;;
+            *)
+              exec /usr/bin/wget "$@"
+              ;;
+          esac
+          WGET_MOCK
+          chmod +x "$HOME/.local/bin/wget"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+          # Pre-create ollama model directories
+          mkdir -p ~/.ollama/models/manifests/registry.ollama.ai/library/smollm
+          echo '{"schemaVersion":2}' > ~/.ollama/models/manifests/registry.ollama.ai/library/smollm/135m
+
+          echo "Setup complete. Mock ollama version:"
+          ollama version
 
       - id: action
         uses: .
         with:
-          model: tinyllama
-          prompt: "Reply with one word"
+          model: smollm:135m
+          prompt: "Say hello"
           cache: "false"
 
-      - name: Assert response is non-empty
+      - name: Assert response is non-empty without cache
         env:
           ACTUAL: ${{ steps.action.outputs.response }}
         run: |
@@ -54,4 +131,4 @@ jobs:
             echo "FAIL: expected a non-empty response when cache is disabled"
             exit 1
           fi
-          echo "PASS"
+          echo "PASS: got response without cache"

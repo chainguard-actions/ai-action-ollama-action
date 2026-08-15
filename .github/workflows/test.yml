@@ -1,0 +1,67 @@
+name: test
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Run action 1 without cache
+        id: response1
+        uses: ./
+        with:
+          model: tinyllama
+          prompt: What's a large language model?
+          cache: false
+
+      - name: Print response 1
+        shell: bash
+        run: echo "$response"
+        env:
+          response: ${{ steps.response1.outputs.response }}
+
+      - name: Run action 2 with multiline prompt and version
+        id: response2
+        uses: ./
+        with:
+          model: tinyllama
+          prompt: |
+            Tell me
+            a joke.
+          version: 0.13.5
+          cache: true
+
+      - name: Print response 2
+        shell: bash
+        run: echo "$response"
+        env:
+          response: ${{ steps.response2.outputs.response }}
+
+      - name: Run action 3 with special characters
+        id: response3
+        uses: ./
+        with:
+          model: tinyllama
+          prompt: |
+            # Markdown example
+
+            A markdown example with backticks:
+
+            ```bash
+            echo "The time is now $(date +%T)"
+            ```
+
+      - name: Print response 3
+        shell: bash
+        run: echo "$response"
+        env:
+          response: ${{ steps.response3.outputs.response }}

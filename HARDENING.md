@@ -8,37 +8,85 @@
 
 **Test Policy SHA:** `843adf9e4b8f85d0c08b27b9d0b09dd094b54702`
 
-**Harden Agent Version:** `1`
+**Harden Agent Version:** `2`
 
-Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 3 finding(s) were identified and resolved across 1 iteration(s).
+Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 4 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-Three `uses:` references in action.yml use mutable version tags instead of pinned 40-character SHA commit digests, making the action vulnerable to supply-chain attacks if the referenced tag is moved or overwritten. Failing references: `ai-action/setup-ollama@v2` (used twice) and `actions/cache@v6`.
+Multiple `uses:` references are pinned to mutable tags rather than immutable 40-character commit SHAs, making the action vulnerable to supply-chain attacks if the tag is moved.
+
+In action.yml:
+- `uses: ai-action/setup-ollama@v2` (line 27)
+- `uses: ai-action/setup-ollama@v2` (line 31)
+- `uses: actions/cache@v6` (line 35)
+
+In .github/workflows/commitlint.yml:
+- `uses: remarkablemark/commitlint@v2` (line 9)
+
+In .github/workflows/release-please.yml:
+- `uses: googleapis/release-please-action@v5` (line 22)
+- `uses: actions/checkout@v7` (line 33)
+
+In .github/workflows/test.yml:
+- `uses: actions/checkout@v7` (line 14)
+
+All should be pinned to a full SHA, e.g. `uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4`.
 
 Locations:
 
 - `action.yml:27`
-- `action.yml:33`
-- `action.yml:38`
+- `action.yml:31`
+- `action.yml:35`
+- `.github/workflows/commitlint.yml:9`
+- `.github/workflows/release-please.yml:22`
+- `.github/workflows/release-please.yml:33`
+- `.github/workflows/test.yml:14`
 
 ### script-injection (severity: high)
 
-Sub-rule (b): In the 'Run model' step, the shell variable `$MODEL` (sourced from `inputs.model`) is expanded unquoted in the command `ollama run $MODEL "$(printf '%q' $PROMPT)"`. An attacker-controlled model name containing shell metacharacters (`;`, `|`, `&`, `$(...)`, etc.) can break out of the intended command and execute arbitrary shell commands. Similarly, `$PROMPT` is unquoted inside the command substitution `$(printf '%q' $PROMPT)`. Both variables must be double-quoted: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"`. The env vars are set from `inputs.model` and `inputs.prompt` which are fully attacker-controlled.
+Sub-rule (a): `${{ ... }}` expressions from `needs.*.outputs.*` are interpolated directly inside `run:` shell command strings in release-please.yml. These values go through YAML template substitution before the shell sees them, allowing shell metacharacter injection if the upstream release-please action produces unexpected output.
+
+Offending lines in the 'Tag major and minor versions' step:
+  `git tag -d v${{ needs.release.outputs.major }} || true`
+  `git tag -d v${{ needs.release.outputs.major }}.${{ needs.release.outputs.minor }} || true`
+  `git tag -a v${{ needs.release.outputs.major }} -m 'Release v${{ needs.release.outputs.major }}'`
+  `git push -f origin v${{ needs.release.outputs.major }}`
+  etc.
+
+Offending line in the 'Tag latest release' step:
+  `run: gh release edit ${{ needs.release.outputs.tag_name }} --latest`
+
+Fix: move the values into `env:` variables and reference them as quoted shell variables, e.g. `"$TAG_NAME"`.
 
 Locations:
 
-- `action.yml:49`
+- `.github/workflows/release-please.yml:43`
+- `.github/workflows/release-please.yml:52`
+
+### script-injection (severity: high)
+
+Sub-rule (b): In action.yml's 'Run model' step, the shell variable `$MODEL` (sourced from `inputs.model`, an untrusted caller-controlled input) is expanded **unquoted** in the `run:` script:
+
+  `ollama run $MODEL "$(printf '%q' $PROMPT)"`
+
+An unquoted expansion allows the shell to parse metacharacters (`;`, `|`, `&`, whitespace, glob chars) out of the value, enabling command injection. `$MODEL` must be double-quoted: `ollama run "$MODEL" ...`.
+
+Locations:
+
+- `action.yml:46`
 
 ### github-env-injection (severity: high)
 
-In the 'Run model' step, the `run:` block writes to `$GITHUB_OUTPUT` using a heredoc pattern. The env vars `MODEL` and `PROMPT` are sourced from `inputs.model` and `inputs.prompt` (untrusted attacker-controlled inputs). Neither value is sanitized with `printf '%s' ... | tr -d '\n\r'` before being used in the write to `$GITHUB_OUTPUT`. A newline embedded in `inputs.model` or `inputs.prompt` could inject additional key=value pairs into `$GITHUB_OUTPUT`, potentially overwriting other step outputs. The randomized EOF delimiter only protects against heredoc terminator injection, not against newline injection in the values themselves.
+In action.yml's 'Run model' step, the output of `ollama run $MODEL "$(printf '%q' $PROMPT)"` is written to `$GITHUB_OUTPUT` via a heredoc without first sanitizing the value with `printf '%s' ... | tr -d '\n\r'`. The `MODEL` and `PROMPT` env vars are set from `inputs.model` and `inputs.prompt` respectively — both are caller-controlled untrusted inputs. A newline embedded in the model's response (or injected via the inputs) could break out of the heredoc delimiter and inject arbitrary key=value pairs into `$GITHUB_OUTPUT`.
+
+The heredoc EOF delimiter (`EOF_OLLAMA_<random>`) mitigates some risk but does not replace the required sanitization of the inputs themselves before they influence the write.
 
 Locations:
 
-- `action.yml:44`
+- `action.yml:41`
 
 ## Iteration Notes
 
@@ -48,5 +96,18 @@ Locations:
 
 **Notes:**
 
-Fixed all three findings in action.yml: (1) Pinned ai-action/setup-ollama@v2 (used twice) to SHA 7c4a03fda24c7b1d7dbff1cf1c7b139c343fead9 and actions/cache@v6 to SHA 2c8a9bd7457de244a408f35966fab2fb45fda9c8, preserving original tags as comments. (2) Fixed script-injection by double-quoting $MODEL and $PROMPT in the shell command (now using $safe_model and $safe_prompt variables). (3) Fixed github-env-injection by sanitizing both MODEL and PROMPT with `printf '%s' "$VAR" | tr -d '\n\r'` before writing to $GITHUB_OUTPUT, preventing newline injection of additional key=value pairs.
+Fixed all 4 findings across 4 files:
+
+1. **unpinned-uses** (action.yml, commitlint.yml, release-please.yml, test.yml): Pinned all 7 mutable tag references to full 40-character commit SHAs with tag comments preserved:
+   - ai-action/setup-ollama@v2 → @591531fff1153f90ea7a512c1c528231856f1036 # v2 (2 occurrences in action.yml)
+   - actions/cache@v6 → @55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+   - remarkablemark/commitlint@v2 → @c4f9e77786e0c94d17570ed36be2adcf022711d3 # v2
+   - googleapis/release-please-action@v5 → @45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+   - actions/checkout@v7 → @3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 (2 occurrences)
+
+2. **script-injection (a)** (release-please.yml): Moved all `${{ needs.release.outputs.* }}` expressions from inline run: shell strings into step-level env: blocks (MAJOR, MINOR, TAG_NAME) and referenced them as double-quoted shell variables.
+
+3. **script-injection (b)** (action.yml): Double-quoted `$MODEL` → `"$SAFE_MODEL"` and `$PROMPT` → `"$SAFE_PROMPT"` in the ollama run command.
+
+4. **github-env-injection** (action.yml): Added sanitization of MODEL and PROMPT inputs using `printf '%s' "$VAR" | tr -d '\n\r'` before they are used in the ollama command and heredoc write to $GITHUB_OUTPUT, preventing newline injection attacks.
 
