@@ -1,0 +1,57 @@
+name: release-please
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      - name: Release Please
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
+        with:
+          release-type: simple
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ needs.release.outputs.release_created }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Configure Git user
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Tag major and minor versions
+        env:
+          MAJOR: ${{ needs.release.outputs.major }}
+          MINOR: ${{ needs.release.outputs.minor }}
+        run: |
+          git tag -d "v${MAJOR}" || true
+          git tag -d "v${MAJOR}.${MINOR}" || true
+          git tag -a "v${MAJOR}" -m "Release v${MAJOR}"
+          git tag -a "v${MAJOR}.${MINOR}" -m "Release v${MAJOR}.${MINOR}"
+          git push -f origin "v${MAJOR}"
+          git push -f origin "v${MAJOR}.${MINOR}"
+
+      - name: Tag latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+        run: gh release edit "$TAG_NAME" --latest

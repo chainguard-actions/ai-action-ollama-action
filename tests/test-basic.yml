@@ -7,33 +7,27 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Ollama
+      - name: Install fake ollama binary
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh || true
-          ollama --version || true
+          mkdir -p "$HOME/bin"
+          printf '#!/bin/sh\nif [ "$1" = "run" ]; then\n  echo "Hello"\n  exit 0\nfi\nexit 0\n' > "$HOME/bin/ollama"
+          chmod +x "$HOME/bin/ollama"
+          sudo cp "$HOME/bin/ollama" /usr/local/bin/ollama
+          echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - id: action
         uses: .
         with:
-          model: smollm:135m
-          prompt: "Say hello"
-          cache: "false"
-        continue-on-error: true
+          model: tinyllama
+          prompt: "Say hello in one word"
 
-      - name: Assert response output
+      - name: Assert response is non-empty
         env:
-          OUTCOME: ${{ steps.action.outcome }}
           ACTUAL: ${{ steps.action.outputs.response }}
         run: |
-          echo "outcome: $OUTCOME"
           echo "actual: $ACTUAL"
-          if [ "$OUTCOME" = "success" ]; then
-            if [ -z "$ACTUAL" ]; then
-              echo "FAIL: action succeeded but response is empty"
-              exit 1
-            fi
-            echo "PASS: response is non-empty"
-          else
-            echo "INFO: action did not succeed (Ollama or setup-ollama not available in this environment)"
-            echo "PASS: skipping response assertion"
+          if [ -z "$ACTUAL" ]; then
+            echo "FAIL: expected a non-empty response"
+            exit 1
           fi
+          echo "PASS: got response"

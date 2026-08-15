@@ -1,4 +1,4 @@
-name: Test with specific Ollama version
+name: Test with cache disabled
 on:
   workflow_dispatch:
 jobs:
@@ -20,7 +20,7 @@ jobs:
         with:
           model: tinyllama
           prompt: "Say hello in one word"
-          version: "0.6.5"
+          cache: "false"
 
       - name: Assert response is non-empty
         env:
@@ -28,7 +28,7 @@ jobs:
         run: |
           echo "actual: $ACTUAL"
           if [ -z "$ACTUAL" ]; then
-            echo "FAIL: expected a non-empty response with specific version"
+            echo "FAIL: expected a non-empty response when cache is disabled"
             exit 1
           fi
-          echo "PASS: got response with specific Ollama version"
+          echo "PASS: got response with cache disabled"
