@@ -44,9 +44,10 @@ runs:
       shell: bash
       run: |
         EOF=EOF_OLLAMA_$(openssl rand -hex 12)
+        safe_model=$(printf '%s' "$MODEL" | tr -d '\n\r')
         {
           echo "response<<$EOF"
-          ollama run "$MODEL" "$PROMPT"
+          ollama run "$safe_model" "$PROMPT"
           echo "$EOF"
         } >> "$GITHUB_OUTPUT"
       env:

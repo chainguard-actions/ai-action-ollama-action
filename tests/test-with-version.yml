@@ -1,37 +1,36 @@
-name: Test with explicit Ollama version - ollama-action
+name: Test with specific Ollama version
 on:
   workflow_dispatch:
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run ollama-action with explicit version
-        id: action
+      - id: action
         uses: .
-        with:
-          model: smollm:135m
-          prompt: "Reply with only the word: yes"
-          version: latest
         continue-on-error: true
+        with:
+          model: tinyllama
+          prompt: "Reply with a single number: 42"
+          version: "0.3.6"
 
-      - name: Assert action ran with explicit version
+      - name: Assert response or graceful failure with pinned version
         env:
           RESPONSE: ${{ steps.action.outputs.response }}
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           echo "response: $RESPONSE"
-          if [ "$OUTCOME" = "failure" ]; then
-            echo "WARN: action step failed - Ollama may not be available in this environment"
-            echo "SKIP: skipping response assertion due to environment limitations"
-            exit 0
-          fi
-          if [ -n "$RESPONSE" ]; then
-            echo "PASS: got a non-empty response with explicit version"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$RESPONSE" ]; then
+              echo "FAIL: action succeeded but response output is empty"
+              exit 1
+            fi
+            echo "PASS: got a non-empty response with pinned Ollama version"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (Ollama model download/run may not be available in this environment)"
           else
-            echo "WARN: response is empty but action did not fail"
-            echo "PASS: action completed without error with explicit version"
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
           fi

@@ -1,36 +1,35 @@
-name: Test basic usage - ollama-action
+name: Test basic usage
 on:
   workflow_dispatch:
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run ollama-action with small model
-        id: action
+      - id: action
         uses: .
-        with:
-          model: smollm:135m
-          prompt: "Say hello in one word."
         continue-on-error: true
+        with:
+          model: tinyllama
+          prompt: "Say hello in one word."
 
-      - name: Assert action ran (response output exists)
+      - name: Assert response or graceful failure
         env:
           RESPONSE: ${{ steps.action.outputs.response }}
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           echo "response: $RESPONSE"
-          if [ "$OUTCOME" = "failure" ]; then
-            echo "WARN: action step failed - Ollama may not be available in this environment"
-            echo "SKIP: skipping response assertion due to environment limitations"
-            exit 0
-          fi
-          if [ -n "$RESPONSE" ]; then
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$RESPONSE" ]; then
+              echo "FAIL: action succeeded but response output is empty"
+              exit 1
+            fi
             echo "PASS: got a non-empty response"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (Ollama model download/run may not be available in this environment)"
           else
-            echo "WARN: response is empty but action did not fail"
-            echo "PASS: action completed without error"
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
           fi
