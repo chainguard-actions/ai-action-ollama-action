@@ -36,7 +36,7 @@ runs:
           -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
-      uses: ai-action/setup-ollama@bfc77222729bdd88f91b95ef1142d247773e486d # v1
+      uses: chainguard-actions/ai-action-setup-ollama@909c177f841322c881b8460fdb33b2ae7f5253dc # v1
       with:
         version: ${{ inputs.version }}
     - name: Run LLM
