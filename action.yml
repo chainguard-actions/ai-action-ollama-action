@@ -41,10 +41,10 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
       if: ${{ !inputs.version }}
-      uses: ai-action/setup-ollama@5f3116a5cd85594f351c3f8600a5ac08e63bc285 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@695617b6266a54f9862ee808b43d9b118da9b3a3 # v2
     - name: Setup Ollama v${{ inputs.version }}
       if: inputs.version
-      uses: ai-action/setup-ollama@5f3116a5cd85594f351c3f8600a5ac08e63bc285 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@695617b6266a54f9862ee808b43d9b118da9b3a3 # v2
       with:
         version: ${{ inputs.version }}
     - name: Cache model
