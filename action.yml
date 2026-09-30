@@ -49,7 +49,7 @@ runs:
         version: ${{ inputs.version }}
     - name: Cache model
       if: inputs.cache == 'true'
-      uses: chainguard-actions/actions-cache@38c9e2f39b3b539d2c7bdb22ccc9cb381ee084b7 # v6
+      uses: chainguard-actions/actions-cache@244dfed44d8c4e917b332280fb2c1063eda3d9be # v6
       with:
         path: ~/.ollama
         key: ollama-action-${{ runner.os }}
@@ -63,8 +63,8 @@ runs:
         {
           echo "response<<$EOF"
           ollama run "$SAFE_MODEL" "$(printf '%q' "$SAFE_PROMPT")"
-          echo "$EOF"
-        } >> "$GITHUB_OUTPUT"
+          echo $EOF
+        } >> $GITHUB_OUTPUT
       env:
         MODEL: ${{ inputs.model }}
         PROMPT: ${{ inputs.prompt }}
