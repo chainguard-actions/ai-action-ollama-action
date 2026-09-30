@@ -41,10 +41,10 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
       if: ${{ !inputs.version }}
-      uses: chainguard-actions/ai-action-setup-ollama@f0bf8d05956840b34390ee090a2c51d1b557ce52 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@695617b6266a54f9862ee808b43d9b118da9b3a3 # v2
     - name: Setup Ollama v${{ inputs.version }}
       if: inputs.version
-      uses: chainguard-actions/ai-action-setup-ollama@f0bf8d05956840b34390ee090a2c51d1b557ce52 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@695617b6266a54f9862ee808b43d9b118da9b3a3 # v2
       with:
         version: ${{ inputs.version }}
     - name: Cache model
@@ -57,14 +57,14 @@ runs:
       id: model
       shell: bash
       run: |
-        SAFE_MODEL=$(printf '%s' "$MODEL" | tr -d '\n\r')
-        SAFE_PROMPT=$(printf '%s' "$PROMPT" | tr -d '\n\r')
+        safe_model=$(printf '%s' "$MODEL" | tr -d '\n\r')
+        safe_prompt=$(printf '%s' "$PROMPT" | tr -d '\n\r')
         EOF=EOF_OLLAMA_$(openssl rand -hex 12)
         {
           echo "response<<$EOF"
-          ollama run "$SAFE_MODEL" "$(printf '%q' "$SAFE_PROMPT")"
-          echo $EOF
-        } >> $GITHUB_OUTPUT
+          ollama run "$safe_model" "$(printf '%q' "$safe_prompt")"
+          echo "$EOF"
+        } >> "$GITHUB_OUTPUT"
       env:
         MODEL: ${{ inputs.model }}
         PROMPT: ${{ inputs.prompt }}
