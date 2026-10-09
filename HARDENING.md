@@ -10,54 +10,63 @@
 
 **Harden Agent Version:** `2`
 
-Action **ai-action--ollama-action/v2.0.0** was hardened automatically. 2 finding(s) were identified and resolved across 2 iteration(s).
+Action **ai-action--ollama-action/v2.0.0** was hardened automatically. 3 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-Three `uses:` references in action.yml are pinned to mutable tags instead of full 40-character commit SHAs, making the action vulnerable to supply-chain attacks if those tags are moved:
-- `ai-action/setup-ollama@v2` (used twice, lines 27 and 31)
-- `actions/cache@v5` (line 36)
-These should each be pinned to a full SHA digest, e.g. `actions/cache@<40-hex-sha> # v5`.
+Three `uses:` references in action.yml use mutable tags instead of pinned 40-character SHA digests, making the action vulnerable to supply-chain attacks if the referenced tags are moved or overwritten:
+- `uses: ai-action/setup-ollama@v2` (Setup Ollama step, line 27)
+- `uses: ai-action/setup-ollama@v2` (Setup Ollama v${{ inputs.version }} step, line 32)
+- `uses: actions/cache@v5` (Cache model step, line 38)
 
 Locations:
 
 - `action.yml:27`
-- `action.yml:31`
-- `action.yml:36`
+- `action.yml:32`
+- `action.yml:38`
 
 ### script-injection (severity: high)
 
-Sub-rule (b) violation: In the 'Run model' step, the env var `$MODEL` (sourced from `inputs.model`, which is attacker-controlled) is expanded **unquoted** inside the `run:` shell command:
+Sub-rule (b) violation in the 'Run model' step: env vars sourced from `inputs.*` are expanded unquoted inside the `run:` shell script.
 
-```
-ollama run $MODEL "$(printf '%q' $PROMPT)"
-```
+1. `$MODEL` (from `inputs.model`) is unquoted: `ollama run $MODEL ...` — an attacker-controlled model name containing shell metacharacters (`;`, `|`, `&`, `$(...)`, whitespace, globs) will be parsed by the shell before execution.
 
-An attacker supplying a model name containing shell metacharacters (`;`, `|`, `&`, `$(...)`, etc.) can cause arbitrary command execution. The fix is to double-quote the expansion: `ollama run "$MODEL" ...`.
+2. `$PROMPT` (from `inputs.prompt`) is unquoted inside a command substitution: `$(printf '%q' $PROMPT)` — word-splitting and glob expansion occur on `$PROMPT` before `printf` ever sees it, allowing an attacker to inject additional arguments or break the quoting.
 
-Note: `$PROMPT` is passed through `printf '%q'` and then double-quoted, which is safer, but `$MODEL` has no such protection.
+Both variables must be double-quoted: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"` .
 
 Locations:
 
-- `action.yml:48`
+- `action.yml:49`
+
+### github-env-injection (severity: high)
+
+The 'Run model' step writes to `$GITHUB_OUTPUT` without sanitizing the value first. The block written is:
+
+```
+echo "response<<$EOF"
+ollama run $MODEL "$(printf '%q' $PROMPT)"
+echo $EOF
+```
+
+The response value is the output of `ollama run`, which is driven by `inputs.model` and `inputs.prompt` — both untrusted inputs. No `printf '%s' ... | tr -d '\n\r'` sanitization is applied before the write. While the randomized `$EOF` delimiter (`EOF_OLLAMA_$(openssl rand -hex 12)`) prevents delimiter injection, the response content itself is written unsanitized to `$GITHUB_OUTPUT`, allowing a crafted model response to inject additional key=value pairs into the output file and potentially poison downstream steps.
+
+Locations:
+
+- `action.yml:44`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, script-injection
+**Fixes applied:** unpinned-uses, script-injection, github-env-injection
 
 **Notes:**
 
-1. Pinned ai-action/setup-ollama@v2 (both occurrences) to SHA 7251aeb8bd484f01af7bff1f887073bcbd82df5c # v2. 2. Pinned actions/cache@v5 to SHA caa296126883cff596d87d8935842f9db880ef25 # v5. 3. Fixed script injection by double-quoting $MODEL in the 'ollama run' command to prevent shell metacharacter injection from attacker-controlled model names.
-
-### Iteration 2
-
-**Fixes applied:** script-injection
-
-**Notes:**
-
-Fixed unquoted $PROMPT variable in the 'Run model' step of action.yml. Changed `$(printf '%q' $PROMPT)` to `$(printf '%q' "$PROMPT")` to prevent shell word-splitting and glob expansion of the attacker-controlled prompt input before it reaches printf.
+Fixed all three findings in hardened/action/action.yml:
+1. unpinned-uses: Pinned ai-action/setup-ollama@v2 to SHA 6782d243db5fbcbf7583532ce0b5122f64242689 (both occurrences at lines 27 and 32) and actions/cache@v5 to SHA caa296126883cff596d87d8935842f9db880ef25 (line 38), preserving original tags in comments.
+2. script-injection: Double-quoted $MODEL and $PROMPT in the 'Run model' step shell script to prevent word-splitting and glob expansion on attacker-controlled values.
+3. github-env-injection: Captured ollama output into raw_response variable, then sanitized with `tr -d '\n\r'` into safe_response before writing to $GITHUB_OUTPUT, preventing newline injection into the output file.
 
