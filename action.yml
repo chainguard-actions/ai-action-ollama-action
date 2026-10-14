@@ -41,10 +41,10 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
       if: ${{ !inputs.version }}
-      uses: chainguard-actions/ai-action-setup-ollama@0fd6c7eae19453ed2448fa821570483d855b9455 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@8be54941910459054cb5a86240d3918ba02cdfd5 # v2
     - name: Setup Ollama v${{ inputs.version }}
       if: inputs.version
-      uses: chainguard-actions/ai-action-setup-ollama@0fd6c7eae19453ed2448fa821570483d855b9455 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@8be54941910459054cb5a86240d3918ba02cdfd5 # v2
       with:
         version: ${{ inputs.version }}
     - name: Cache model
@@ -61,8 +61,8 @@ runs:
         {
           echo "response<<$EOF"
           ollama run "$MODEL" "$(printf '%q' "$PROMPT")"
-          echo "$EOF"
-        } >> "$GITHUB_OUTPUT"
+          echo $EOF
+        } >> $GITHUB_OUTPUT
       env:
         MODEL: ${{ inputs.model }}
         PROMPT: ${{ inputs.prompt }}
