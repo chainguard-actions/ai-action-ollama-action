@@ -1,6 +1,7 @@
 name: ollama-action
 description: Run Ollama large language models (LLMs) with GitHub Actions
 author: remarkablemark
+
 inputs:
   model:
     description: Language model name
@@ -15,10 +16,12 @@ inputs:
     description: Whether to cache the model
     required: false
     default: true
+
 outputs:
   response:
     description: Generated response message
     value: ${{ steps.model.outputs.response }}
+
 runs:
   using: composite
   steps:
@@ -41,18 +44,21 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
       if: ${{ !inputs.version }}
-      uses: chainguard-actions/ai-action-setup-ollama@8be54941910459054cb5a86240d3918ba02cdfd5 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@c94b67c6844087ad5b8c503ac6dddfd96422ee85 # v2
+
     - name: Setup Ollama v${{ inputs.version }}
       if: inputs.version
-      uses: chainguard-actions/ai-action-setup-ollama@8be54941910459054cb5a86240d3918ba02cdfd5 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@c94b67c6844087ad5b8c503ac6dddfd96422ee85 # v2
       with:
         version: ${{ inputs.version }}
+
     - name: Cache model
       if: inputs.cache == 'true'
       uses: chainguard-actions/actions-cache@244dfed44d8c4e917b332280fb2c1063eda3d9be # v6
       with:
         path: ~/.ollama
         key: ollama-action-${{ runner.os }}
+
     - name: Run model
       id: model
       shell: bash
@@ -66,6 +72,7 @@ runs:
       env:
         MODEL: ${{ inputs.model }}
         PROMPT: ${{ inputs.prompt }}
+
 branding:
   icon: terminal
   color: gray-dark
