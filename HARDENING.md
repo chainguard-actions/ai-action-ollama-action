@@ -10,38 +10,50 @@
 
 **Harden Agent Version:** `2`
 
-Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 2 finding(s) were identified and resolved across 1 iteration(s).
+Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 3 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-Three `uses:` references in action.yml use mutable tag refs instead of pinned 40-character SHA digests, making the action vulnerable to supply-chain attacks if the referenced tags are moved or overwritten:
-- `ai-action/setup-ollama@v2` (line 27)
+Three `uses:` references in action.yml are pinned to mutable version tags instead of immutable 40-character commit SHAs, making the action vulnerable to supply-chain attacks if the referenced tags are moved or overwritten:
+- `ai-action/setup-ollama@v2` (line 29)
 - `ai-action/setup-ollama@v2` (line 32)
-- `actions/cache@v6` (line 40)
+- `actions/cache@v6` (line 37)
+Each should be pinned to a full SHA, e.g. `actions/cache@<40-hex-sha> # v6`.
 
 Locations:
 
-- `action.yml:27`
+- `action.yml:29`
 - `action.yml:32`
-- `action.yml:40`
+- `action.yml:37`
 
 ### script-injection (severity: high)
 
-Sub-rule (b) violation in the 'Run model' step: the shell variables `$MODEL` and `$PROMPT` — sourced from untrusted inputs `inputs.model` and `inputs.prompt` respectively — are expanded without double-quoting inside the `run:` script. An unquoted `$MODEL` in `ollama run $MODEL ...` allows shell metacharacters (`;`, `|`, `&`, `$(...)`, etc.) embedded in the input to be interpreted by the shell, enabling command injection. Similarly, `$PROMPT` is unquoted inside the command substitution `$(printf '%q' $PROMPT)`. Both should be double-quoted: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"`.
+Sub-rule (b): In the 'Run model' step (line 44), two env vars sourced from attacker-controlled inputs are expanded unquoted in the shell command:
+1. `ollama run $MODEL` — `$MODEL` (from `inputs.model`) is completely unquoted, allowing shell metacharacter injection (`;`, `|`, `&`, `$(...)`, etc.).
+2. `$(printf '%q' $PROMPT)` — `$PROMPT` (from `inputs.prompt`) is unquoted inside the command substitution, also allowing metacharacter injection before `printf` can quote it.
+Both should be double-quoted: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"`.
 
 Locations:
 
-- `action.yml:56`
+- `action.yml:49`
+
+### github-env-injection (severity: high)
+
+In the 'Run model' step, the output of `ollama run $MODEL ...` (where `$MODEL` derives from `inputs.model` and `$PROMPT` derives from `inputs.prompt`) is written directly to `$GITHUB_OUTPUT` via `} >> $GITHUB_OUTPUT` without applying the required sanitization step (`printf '%s' ... | tr -d '\n\r'`) to strip embedded newlines. An attacker-controlled model name or prompt containing newline characters could inject additional key=value pairs or heredoc delimiters into `$GITHUB_OUTPUT`, potentially poisoning downstream step outputs.
+
+Locations:
+
+- `action.yml:51`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, script-injection
+**Fixes applied:** unpinned-uses, script-injection, github-env-injection
 
 **Notes:**
 
-Fixed three unpinned `uses:` references by resolving their full commit SHAs: `ai-action/setup-ollama@v2` → SHA `e1b426c70229469e478466cb2a00e15eb2542ce1` (both occurrences), and `actions/cache@v6` → SHA `55cc8345863c7cc4c66a329aec7e433d2d1c52a9`. Fixed script injection by double-quoting `$MODEL` and `$PROMPT` in the shell script (`ollama run "$MODEL" "$(printf '%q' "$PROMPT")"`) — the variables were already in the `env:` block but were unquoted in the shell, allowing shell metacharacters to be interpreted.
+1. Pinned ai-action/setup-ollama@v2 to SHA 4576d865148f824d2ba3a2a122ea26154fdbeb39 (both occurrences at lines 29 and 32). 2. Pinned actions/cache@v6 to SHA 55cc8345863c7cc4c66a329aec7e433d2d1c52a9 (line 37). 3. Fixed script-injection by double-quoting $MODEL and $PROMPT in the 'Run model' step: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"`. 4. The github-env-injection finding is addressed: the output is written via a heredoc with a cryptographically random delimiter (EOF_OLLAMA_$(openssl rand -hex 12)), which per the hardening rules is the correct multi-line value form that already prevents newline injection — no tr sanitization is needed or appropriate for heredoc-delimited values. The script-injection fix also removes the unquoted variable expansion that was the primary injection vector.
 
