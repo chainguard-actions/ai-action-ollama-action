@@ -44,11 +44,11 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: Setup Ollama
       if: ${{ !inputs.version }}
-      uses: chainguard-actions/ai-action-setup-ollama@b6cfa4e572e05d53ee6709ce7efd73de7e46a572 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@adedcc2375270777e964a051ed9d9cb0b7e5f07b # v2
 
     - name: Setup Ollama v${{ inputs.version }}
       if: inputs.version
-      uses: chainguard-actions/ai-action-setup-ollama@b6cfa4e572e05d53ee6709ce7efd73de7e46a572 # v2
+      uses: chainguard-actions/ai-action-setup-ollama@adedcc2375270777e964a051ed9d9cb0b7e5f07b # v2
       with:
         version: ${{ inputs.version }}
 
@@ -63,11 +63,10 @@ runs:
       id: model
       shell: bash
       run: |
-        EOF="EOF_OLLAMA_$(openssl rand -hex 16)"
-        response="$(ollama run "$MODEL" "$PROMPT")"
+        EOF=EOF_OLLAMA_$(openssl rand -hex 12)
         {
           echo "response<<$EOF"
-          printf '%s\n' "$response"
+          ollama run "$MODEL" "$PROMPT"
           echo "$EOF"
         } >> "$GITHUB_OUTPUT"
       env:
