@@ -16,7 +16,7 @@ Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 2 finding
 
 ### unpinned-uses (severity: high)
 
-Composite action steps pin actions to tags instead of full 40-character commit SHAs: 'uses: ai-action/setup-ollama@v2' (line 30), 'uses: ai-action/setup-ollama@v2' (line 34), 'uses: actions/cache@v6' (line 40).
+The composite action references other actions by version tag instead of a full 40-character commit SHA: `uses: ai-action/setup-ollama@v2` (line 30), `uses: ai-action/setup-ollama@v2` (line 34), `uses: actions/cache@v6` (line 40).
 
 Locations:
 
@@ -26,7 +26,7 @@ Locations:
 
 ### script-injection (severity: high)
 
-Sub-rule (b) is violated: shell variables that hold workflow inputs are expanded without double quotes in the 'Run model' step. The offending line is `ollama run $MODEL "$(printf '%q' $PROMPT)"`. MODEL comes from inputs.model and PROMPT comes from inputs.prompt, and both are unquoted, so the shell can split words and expand globs on their values. The fix is `ollama run "$MODEL" "$PROMPT"`. The same step also leaves `echo $EOF` and `>> $GITHUB_OUTPUT` unquoted.
+Sub-rule (b), unquoted shell expansion of untrusted data. In the 'Run model' step, MODEL and PROMPT come from inputs.model and inputs.prompt, but the script expands them without double quotes: `ollama run $MODEL "$(printf '%q' $PROMPT)"`. Bare $MODEL is split on whitespace and glob-expanded, so it can inject extra arguments. Bare $PROMPT inside the command substitution is also split and globbed. The fix is to quote both: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"` (or pass "$PROMPT" directly).
 
 Locations:
 
@@ -40,7 +40,7 @@ Locations:
 
 **Notes:**
 
-Pinned ai-action/setup-ollama@v2 to 27578c4f6dab23d6b8eb49566a85cf8d6f997a9a (2 places) and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, with tag comments. In the 'Run model' step, quoted $MODEL, $EOF and $GITHUB_OUTPUT, and replaced "$(printf '%q' $PROMPT)" with "$PROMPT". Upstream's unquoted printf split the prompt into words and joined them back with no spaces; it now reaches ollama exactly as written. The random heredoc delimiter is unchanged.
+Pinned both ai-action/setup-ollama@v2 references to cceadd0155f199c7b19f04ab5a1cae9e0c1af005 and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, keeping the tag as a trailing comment. In the 'Run model' step I quoted the variables as the finding suggested: ollama run "$MODEL" "$(printf '%q' "$PROMPT")". I also quoted "$EOF" and "$GITHUB_OUTPUT". The heredoc delimiter is already random (openssl rand), so I left it as it was. One behaviour change: before, printf '%q' got each word of the prompt as a separate argument and joined them with no space between them. Now it gets the whole prompt as one argument, so spaces in the prompt are kept, escaped with backslashes. Nothing was run to test this.
 
 ### Iteration 2
 
@@ -48,5 +48,5 @@ Pinned ai-action/setup-ollama@v2 to 27578c4f6dab23d6b8eb49566a85cf8d6f997a9a (2 
 
 **Notes:**
 
-Pinned both ai-action/setup-ollama@v2 references in action.yml to 27578c4f6dab23d6b8eb49566a85cf8d6f997a9a # v2.
+Put back `version: ${{ inputs.version }}` for the setup-ollama step, which had been corrupted. Pinned actions/cache to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6 (looked up with lookup_action_sha).
 
