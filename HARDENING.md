@@ -10,13 +10,13 @@
 
 **Harden Agent Version:** `2`
 
-Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 2 finding(s) were identified and resolved across 2 iteration(s).
+Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 3 finding(s) were identified and resolved across 2 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-The composite action references other actions by version tag instead of a full 40-character commit SHA: `uses: ai-action/setup-ollama@v2` (line 30), `uses: ai-action/setup-ollama@v2` (line 34), `uses: actions/cache@v6` (line 40).
+action.yml has composite steps that use version tags instead of full 40-character commit SHAs: `uses: ai-action/setup-ollama@v2` (twice) and `uses: actions/cache@v6`.
 
 Locations:
 
@@ -26,21 +26,29 @@ Locations:
 
 ### script-injection (severity: high)
 
-Sub-rule (b), unquoted shell expansion of untrusted data. In the 'Run model' step, MODEL and PROMPT come from inputs.model and inputs.prompt, but the script expands them without double quotes: `ollama run $MODEL "$(printf '%q' $PROMPT)"`. Bare $MODEL is split on whitespace and glob-expanded, so it can inject extra arguments. Bare $PROMPT inside the command substitution is also split and globbed. The fix is to quote both: `ollama run "$MODEL" "$(printf '%q' "$PROMPT")"` (or pass "$PROMPT" directly).
+Rule (b) is broken in the 'Run model' step: shell variables that hold input values are expanded without double quotes. The offending line is `ollama run $MODEL "$(printf '%q' $PROMPT)"`. $MODEL (from inputs.model) is unquoted, so the shell splits it on spaces and expands glob characters. $PROMPT (from inputs.prompt) is also unquoted inside the command substitution. Fix: use "$MODEL" and "$PROMPT".
 
 Locations:
 
-- `action.yml:52`
+- `action.yml:51`
+
+### github-env-injection (severity: high)
+
+The 'Run model' step writes the output of `ollama run $MODEL ...` to $GITHUB_OUTPUT inside a `{ ... } >> $GITHUB_OUTPUT` block. That output depends on the untrusted inputs.model and inputs.prompt. The step uses a random heredoc delimiter, but the value does not go through the required `printf '%s' ... | tr -d '\n\r'` sanitization, and $GITHUB_OUTPUT is not quoted.
+
+Locations:
+
+- `action.yml:48`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, script-injection
+**Fixes applied:** unpinned-uses, script-injection, github-env-injection
 
 **Notes:**
 
-Pinned both ai-action/setup-ollama@v2 references to cceadd0155f199c7b19f04ab5a1cae9e0c1af005 and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, keeping the tag as a trailing comment. In the 'Run model' step I quoted the variables as the finding suggested: ollama run "$MODEL" "$(printf '%q' "$PROMPT")". I also quoted "$EOF" and "$GITHUB_OUTPUT". The heredoc delimiter is already random (openssl rand), so I left it as it was. One behaviour change: before, printf '%q' got each word of the prompt as a separate argument and joined them with no space between them. Now it gets the whole prompt as one argument, so spaces in the prompt are kept, escaped with backslashes. Nothing was run to test this.
+Pinned ai-action/setup-ollama@v2 (both uses) to 4bf548198040c1344478ef71f5233d2249695539 and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, keeping tag comments. In the 'Run model' step, quoted "$MODEL" and "$PROMPT" (inside printf '%q'), plus "$EOF" and "$GITHUB_OUTPUT". The multi-line response is written between a random per-run heredoc delimiter (openssl rand -hex 12), so newlines are intentionally NOT stripped: tr -d would merge the response lines; the random delimiter already prevents output injection.
 
 ### Iteration 2
 
@@ -48,5 +56,5 @@ Pinned both ai-action/setup-ollama@v2 references to cceadd0155f199c7b19f04ab5a1c
 
 **Notes:**
 
-Put back `version: ${{ inputs.version }}` for the setup-ollama step, which had been corrupted. Pinned actions/cache to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6 (looked up with lookup_action_sha).
+Rebuilt the broken 'Setup Ollama v' step: its 'with:' block now reads 'version: ${{ inputs.version }}', the setup-ollama input name I assumed and did not check. Pinned the 'Cache model' step to actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6. I confirmed this SHA with lookup_action_sha.
 
