@@ -10,13 +10,13 @@
 
 **Harden Agent Version:** `2`
 
-Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 3 finding(s) were identified and resolved across 2 iteration(s).
+Action **ai-action--ollama-action/v2.0.1** was hardened automatically. 2 finding(s) were identified and resolved across 2 iteration(s).
 
 ## Findings Fixed
 
 ### unpinned-uses (severity: high)
 
-action.yml has composite steps that use version tags instead of full 40-character commit SHAs: `uses: ai-action/setup-ollama@v2` (twice) and `uses: actions/cache@v6`.
+The composite action steps use tag refs instead of full 40-character commit SHAs: 'uses: ai-action/setup-ollama@v2' (twice) and 'uses: actions/cache@v6'.
 
 Locations:
 
@@ -26,35 +26,27 @@ Locations:
 
 ### script-injection (severity: high)
 
-Rule (b) is broken in the 'Run model' step: shell variables that hold input values are expanded without double quotes. The offending line is `ollama run $MODEL "$(printf '%q' $PROMPT)"`. $MODEL (from inputs.model) is unquoted, so the shell splits it on spaces and expands glob characters. $PROMPT (from inputs.prompt) is also unquoted inside the command substitution. Fix: use "$MODEL" and "$PROMPT".
+Rule (b), unquoted expansion of untrusted data. In the 'Run model' step, MODEL (from inputs.model) and PROMPT (from inputs.prompt) are expanded without double quotes: `ollama run $MODEL "$(printf '%q' $PROMPT)"`. The shell splits these values on whitespace and expands glob characters in them, so a caller can inject extra arguments into ollama. The fix is `ollama run "$MODEL" "$PROMPT"`. Also, `$GITHUB_OUTPUT` and `$EOF` are unquoted.
 
 Locations:
 
-- `action.yml:51`
-
-### github-env-injection (severity: high)
-
-The 'Run model' step writes the output of `ollama run $MODEL ...` to $GITHUB_OUTPUT inside a `{ ... } >> $GITHUB_OUTPUT` block. That output depends on the untrusted inputs.model and inputs.prompt. The step uses a random heredoc delimiter, but the value does not go through the required `printf '%s' ... | tr -d '\n\r'` sanitization, and $GITHUB_OUTPUT is not quoted.
-
-Locations:
-
-- `action.yml:48`
+- `action.yml:52`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, script-injection, github-env-injection
+**Fixes applied:** unpinned-uses, script-injection
 
 **Notes:**
 
-Pinned ai-action/setup-ollama@v2 (both uses) to 4bf548198040c1344478ef71f5233d2249695539 and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, keeping tag comments. In the 'Run model' step, quoted "$MODEL" and "$PROMPT" (inside printf '%q'), plus "$EOF" and "$GITHUB_OUTPUT". The multi-line response is written between a random per-run heredoc delimiter (openssl rand -hex 12), so newlines are intentionally NOT stripped: tr -d would merge the response lines; the random delimiter already prevents output injection.
+Pinned ai-action/setup-ollama@v2 (both uses) to d01d384a4092ed43e2cfea696ad74c24b53b2ca5 and actions/cache@v6 to 55cc8345863c7cc4c66a329aec7e433d2d1c52a9, with the tags kept as trailing comments. In the 'Run model' step, the line is now `ollama run "$MODEL" "$PROMPT"` and $EOF and $GITHUB_OUTPUT are quoted. This changes the output: upstream's `printf '%q' $PROMPT` split the prompt into words and joined them with no spaces, and escaped shell characters with backslashes. The prompt now reaches ollama exactly as the caller wrote it. Nothing was run to test this.
 
 ### Iteration 2
 
-**Fixes applied:** unpinned-uses
+**Fixes applied:** script-injection
 
 **Notes:**
 
-Rebuilt the broken 'Setup Ollama v' step: its 'with:' block now reads 'version: ${{ inputs.version }}', the setup-ollama input name I assumed and did not check. Pinned the 'Cache model' step to actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6. I confirmed this SHA with lookup_action_sha.
+In the 'Run model' step, replaced `ollama run $MODEL "$(printf '%q' $PROMPT)"` with `ollama run "$MODEL" "$PROMPT"` so the model and prompt each reach ollama as one argument with no word-splitting or globbing. Also quoted $EOF and $GITHUB_OUTPUT. The heredoc delimiter is still random per run (openssl rand).
 
